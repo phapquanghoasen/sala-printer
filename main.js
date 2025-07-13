@@ -80,9 +80,10 @@ async function printReceipt(data) {
   const printerDoc = await admin.firestore().collection('printers').doc(printerId).get();
   if (!printerDoc.exists) throw new Error('Không tìm thấy máy in!');
   const printerData = printerDoc.data();
-  const printerIp = printerData.ip;
+  const printerIp = printerData.printerIp || '192.168.1.240';
+  const printerPort = printerData.printerPort || 9100;
 
-  const device = new escpos.Network(printerIp, 9100);
+  const device = new escpos.Network(printerIp, printerPort);
   const printer = new escpos.Printer(device);
 
   return new Promise((resolve, reject) => {
