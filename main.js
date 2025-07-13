@@ -69,19 +69,100 @@ ipcMain.on('login-success', (event, uid) => {
   startBackground();
 });
 
-async function printReceipt(data) {
+function formatPrice(value) {
+  const numValue = typeof value === 'string' ? parseFloat(value) : value;
+  return numValue
+    .toLocaleString('vi-VN', {
+      style: 'currency',
+      currency: 'VND',
+      maximumFractionDigits: 0,
+    })
+    .replace('₫', 'VNĐ')
+    .trim();
+}
+
+function getBillTotal(foods) {
+  return (foods || []).reduce((sum, food) => sum + food.price * food.quantity, 0);
+}
+
+function formatFoodLine(name, qty, price) {
+  const nameWidth = 24;
+  const qtyWidth = 6;
+  const priceWidth = 18;
+
+  let foodName = name.length > nameWidth ? name.slice(0, nameWidth - 1) + '…' : name;
+  foodName = foodName.padEnd(nameWidth, ' ');
+
+  const qtyStr = String(qty).padStart(qtyWidth, ' ');
+  const priceStr = formatPrice(price).padStart(priceWidth, ' ');
+
+  return `${foodName}${qtyStr}${priceStr}`;
+}
+
+function printBill(printer, data) {
+  // Độ rộng cột
+  const nameWidth = 24;
+  const qtyWidth = 6;
+  const priceWidth = 18;
+
+  // Tiêu đề cột
+  const foodName = 'Tên món';
+  const foodQty = 'SL';
+  const foodPrice = 'Giá';
+
+  // Tạo biến space cho từng cột
+  const space1 = ' '.repeat(nameWidth - foodName.length);
+  const space2 = ' '.repeat(qtyWidth - foodQty.length);
+
+  // Tạo đường kẻ ngang
+  const lineSeparator = '-'.repeat(48);
+
+  // Dòng tiêu đề
+  const tableNumber = data.tableNumber ? `Bàn: ${data.tableNumber}` : '';
+  printer
+    .encode('GB18030')
+    .font('a')
+    .style('b')
+    .align('ct')
+    .text('SALA FOOD')
+    .text(tableNumber)
+    .text(lineSeparator)
+    .align('lt')
+    .text(foodName + space1 + foodQty + space2 + foodPrice);
+
+  // In từng món ăn
+  data.foods.forEach(food => {
+    printer.text(formatFoodLine(food.name, food.quantity, food.price));
+  });
+
+  // In tổng tiền căn thẳng cột giá
+  const totalLabel = 'Tổng:'.padEnd(nameWidth + qtyWidth, ' ');
+  const totalValue = formatPrice(getBillTotal(data.foods)).padStart(priceWidth, ' ');
+  printer
+    .text(lineSeparator)
+    .style('b')
+    .text(`${totalLabel}${totalValue}`)
+    .style('normal')
+    .text(' ')
+    .align('ct')
+    .text('NAM MÔ A DI ĐÀ PHẬT')
+    .cut();
+}
+
+async function printReceipt(billId) {
   const uid = store.get('uid');
   const userDoc = await admin.firestore().collection('users').doc(uid).get();
   if (!userDoc.exists) throw new Error('Không tìm thấy user!');
   const userData = userDoc.data();
-  const printerId = userData.printerId;
-  if (!printerId) throw new Error('User chưa cấu hình printerId!');
 
-  const printerDoc = await admin.firestore().collection('printers').doc(printerId).get();
-  if (!printerDoc.exists) throw new Error('Không tìm thấy máy in!');
-  const printerData = printerDoc.data();
-  const printerIp = printerData.printerIp || '192.168.1.240';
-  const printerPort = printerData.printerPort || 9100;
+  let printerIp = '192.168.1.240';
+  let printerPort = 9100;
+  if (userData.printerIp) printerIp = userData.printerIp;
+  if (userData.printerPort) printerPort = userData.printerPort;
+
+  const billDoc = await admin.firestore().collection('bills').doc(billId).get();
+  if (!billDoc.exists) throw new Error('Không tìm thấy hóa đơn!');
+  const billData = billDoc.data();
 
   const device = new escpos.Network(printerIp, printerPort);
   const printer = new escpos.Printer(device);
@@ -89,33 +170,8 @@ async function printReceipt(data) {
   return new Promise((resolve, reject) => {
     device.open(() => {
       try {
-        printer
-          .encode('GB18030')
-          .font('a')
-          .style('b')
-          .align('ct')
-          .text('SALA FOOD')
-          .text(`Bàn: ${data.tableNumber || ''}`)
-          .text('--------------------------')
-          .align('lt')
-          .text('Tên món                 Giá         SL');
-
-        (data.foods || data.items).forEach(item => {
-          const name = item.name.padEnd(22, ' ');
-          const price = item.price.toLocaleString('vi-VN').padStart(12, ' ');
-          const qty = String(item.quantity || item.qty).padStart(8, ' ');
-          printer.text(`${name}${price}${qty}`);
-        });
-
-        printer
-          .text('--------------------------')
-          .align('rt')
-          .text(`Tổng: ${(data.total || (data.foods || data.items).reduce((s, f) => s + f.price * (f.quantity || f.qty), 0)).toLocaleString('vi-VN')} VNĐ`)
-          .text(' ')
-          .align('ct')
-          .text('NAM MÔ A DI ĐÀ PHẬT')
-          .cut()
-          .close(resolve);
+        printBill(printer, billData);
+        printer.close(resolve);
       } catch (err) {
         reject(err);
       }
@@ -148,7 +204,7 @@ function listenPrintQueue() {
           const data = change.doc.data();
           await docRef.update({ status: PRINT_STATUS.printing });
           try {
-            await printReceipt(data);
+            await printReceipt(data.billId);
             await docRef.update({
               status: PRINT_STATUS.success,
               printedAt: admin.firestore.FieldValue.serverTimestamp(),
