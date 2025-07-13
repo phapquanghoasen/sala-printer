@@ -55,42 +55,7 @@
   </form>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
-  <script>
-    const firebaseConfig = {
-      apiKey: "AIzaSyAsSeZNVServD1AhMv3RY1HKV1FvYpgzSw",
-      authDomain: "sala-food.firebaseapp.com",
-      projectId: "sala-food",
-      storageBucket: "sala-food.appspot.com",
-      messagingSenderId: "393672177072",
-      appId: "1:393672177072:web:4f48bf57cc241b378c5275",
-      measurementId: "G-8G5S21P1JW"
-    };
-    firebase.initializeApp(firebaseConfig);
-
-    const { ipcRenderer } = require('electron');
-    const loginBtn = document.getElementById('loginBtn');
-    const errorDiv = document.getElementById('error');
-
-    document.getElementById('loginForm').addEventListener('submit', function (e) {
-      e.preventDefault();
-      loginBtn.disabled = true;
-      errorDiv.textContent = '';
-      const email = document.getElementById('email').value.trim();
-      const password = document.getElementById('password').value;
-
-      firebase.auth().signInWithEmailAndPassword(email, password)
-        .then(userCredential => {
-          const uid = userCredential.user.uid;
-          ipcRenderer.send('login-success', uid);
-        })
-        .catch(error => {
-          errorDiv.textContent = error.message;
-        })
-        .finally(() => {
-          loginBtn.disabled = false;
-        });
-    });
-  </script>
+  <script src="index.js"></script>
 </body>
 
 </html>

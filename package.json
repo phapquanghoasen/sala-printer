@@ -26,12 +26,12 @@
   "type": "commonjs",
   "dependencies": {
     "electron-auto-launch": "^5.0.7",
+    "electron-store": "^10.1.0",
     "escpos": "^3.0.0-alpha.6",
     "escpos-network": "^3.0.0-alpha.5",
     "escpos-usb": "^3.0.0-alpha.4",
     "express": "^5.1.0",
-    "firebase-admin": "^13.4.0",
-    "node-printer": "^1.0.4"
+    "firebase-admin": "^13.4.0"
   },
   "devDependencies": {
     "electron": "^37.2.0",
