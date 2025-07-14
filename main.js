@@ -1,10 +1,12 @@
-const { app, Tray, Menu, BrowserWindow, ipcMain } = require('electron');
+const { app, Tray, Menu, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const Store = require('electron-store').default;
 const store = new Store();
 const admin = require('firebase-admin');
-const escpos = require('escpos');
+const net = require('net');
 const AutoLaunch = require('electron-auto-launch');
+const Sudoer = require('electron-sudo').default;
+const sudoer = new Sudoer();
 
 const serviceAccountPath = path.join(process.resourcesPath, 'firebase-service-account.json');
 const serviceAccount = require(serviceAccountPath);
@@ -99,82 +101,77 @@ function formatFoodLine(name, qty, price) {
   return `${foodName}${qtyStr}${priceStr}`;
 }
 
-function printBill(printer, data) {
-  // Độ rộng cột
-  const nameWidth = 24;
-  const qtyWidth = 6;
-  const priceWidth = 18;
-
-  // Tiêu đề cột
-  const foodName = 'Tên món';
-  const foodQty = 'SL';
-  const foodPrice = 'Giá';
-
-  // Tạo biến space cho từng cột
-  const space1 = ' '.repeat(nameWidth - foodName.length);
-  const space2 = ' '.repeat(qtyWidth - foodQty.length);
-
-  // Tạo đường kẻ ngang
-  const lineSeparator = '-'.repeat(48);
-
-  // Dòng tiêu đề
-  const tableNumber = data.tableNumber ? `Bàn: ${data.tableNumber}` : '';
-  printer
-    .encode('GB18030')
-    .font('a')
-    .style('b')
-    .align('ct')
-    .text('SALA FOOD')
-    .text(tableNumber)
-    .text(lineSeparator)
-    .align('lt')
-    .text(foodName + space1 + foodQty + space2 + foodPrice);
-
-  // In từng món ăn
+function buildEscposBuffer(data) {
+  let lines = [];
+  lines.push('\x1B\x40'); // ESC @ (reset)
+  lines.push('\x1B\x21\x20'); // font double height
+  lines.push('SALA FOOD\n');
+  if (data.tableNumber) lines.push(`Bàn: ${data.tableNumber}\n`);
+  lines.push('------------------------------------------------\n');
+  lines.push('Tên món                 SL     Giá\n');
   data.foods.forEach(food => {
-    printer.text(formatFoodLine(food.name, food.quantity, food.price));
+    lines.push(formatFoodLine(food.name, food.quantity, food.price) + '\n');
   });
-
-  // In tổng tiền căn thẳng cột giá
-  const totalLabel = 'Tổng:'.padEnd(nameWidth + qtyWidth, ' ');
-  const totalValue = formatPrice(getBillTotal(data.foods)).padStart(priceWidth, ' ');
-  printer
-    .text(lineSeparator)
-    .style('b')
-    .text(`${totalLabel}${totalValue}`)
-    .style('normal')
-    .text(' ')
-    .align('ct')
-    .text('NAM MÔ A DI ĐÀ PHẬT')
-    .cut();
+  lines.push('------------------------------------------------\n');
+  lines.push(`Tổng: ${formatPrice(getBillTotal(data.foods))}\n`);
+  lines.push('\nNAM MÔ A DI ĐÀ PHẬT\n\n\n');
+  lines.push('\x1D\x56\x00'); // cut
+  return Buffer.from(lines.join(''), 'utf8');
 }
 
 async function printReceipt(billId) {
+  console.log(`[PRINT] Bắt đầu in hóa đơn: ${billId}`);
   const uid = store.get('uid');
   const userDoc = await admin.firestore().collection('users').doc(uid).get();
-  if (!userDoc.exists) throw new Error('Không tìm thấy user!');
+  if (!userDoc.exists) {
+    console.error('[PRINT] Không tìm thấy user!');
+    throw new Error('Không tìm thấy user!');
+  }
   const userData = userDoc.data();
 
-  let printerIp = '192.168.1.240';
+  let printerIp = '192.168.1.100';
   let printerPort = 9100;
   if (userData.printerIp) printerIp = userData.printerIp;
   if (userData.printerPort) printerPort = userData.printerPort;
 
   const billDoc = await admin.firestore().collection('bills').doc(billId).get();
-  if (!billDoc.exists) throw new Error('Không tìm thấy hóa đơn!');
+  if (!billDoc.exists) {
+    console.error('[PRINT] Không tìm thấy hóa đơn!');
+    throw new Error('Không tìm thấy hóa đơn!');
+  }
   const billData = billDoc.data();
 
-  const device = new escpos.Network(printerIp, printerPort);
-  const printer = new escpos.Printer(device);
+  const buffer = buildEscposBuffer(billData);
 
   return new Promise((resolve, reject) => {
-    device.open(() => {
-      try {
-        printBill(printer, billData);
-        printer.close(resolve);
-      } catch (err) {
-        reject(err);
+    const client = new net.Socket();
+    let isConnected = false;
+    client.setTimeout(5000);
+
+    client.connect(printerPort, printerIp, () => {
+      isConnected = true;
+      console.log(`[PRINT] Đã kết nối tới máy in ${printerIp}:${printerPort}`);
+      client.write(buffer, () => {
+        console.log('[PRINT] Đã gửi dữ liệu in thành công');
+        client.end();
+        resolve();
+      });
+    });
+
+    client.on('timeout', () => {
+      if (!isConnected) {
+        const msg = `[PRINT] Không thể kết nối tới máy in tại ${printerIp}:${printerPort} (timeout)`;
+        console.error(msg);
+        client.destroy();
+        reject(new Error(msg));
       }
+    });
+
+    client.on('error', err => {
+      const msg = `[PRINT] Lỗi khi kết nối hoặc in: ${err.message}`;
+      console.error(msg);
+      client.destroy();
+      reject(new Error(msg));
     });
   });
 }
@@ -202,6 +199,7 @@ function listenPrintQueue() {
         if (change.type === 'added') {
           const docRef = change.doc.ref;
           const data = change.doc.data();
+          console.log(`[QUEUE] Nhận yêu cầu in mới: billId=${data.billId}`);
           await docRef.update({ status: PRINT_STATUS.printing });
           try {
             await printReceipt(data.billId);
@@ -209,31 +207,67 @@ function listenPrintQueue() {
               status: PRINT_STATUS.success,
               printedAt: admin.firestore.FieldValue.serverTimestamp(),
             });
+            console.log(`[QUEUE] In thành công: billId=${data.billId}`);
           } catch (err) {
             await docRef.update({
               status: PRINT_STATUS.failed,
               error: err.message,
               failedAt: admin.firestore.FieldValue.serverTimestamp(),
             });
+            console.error(`[QUEUE] In thất bại: billId=${data.billId} - ${err.message}`);
           }
         }
       });
     });
 }
 
-app.on('ready', () => {
-  const uid = store.get('uid');
-  if (!uid) {
-    createLoginWindow();
-  } else {
-    startBackground();
-  }
-  salaAutoLauncher.enable().catch(err => {
-    console.error('AutoLaunch error:', err);
-  });
-});
+// Đảm bảo chỉ chạy 1 instance
+const gotTheLock = app.requestSingleInstanceLock();
 
-app.on('window-all-closed', e => {
-  // Không thoát app khi đóng hết cửa sổ (chạy ngầm tray)
-  e.preventDefault();
-});
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    // Nếu có cửa sổ login hoặc main thì focus lên
+    if (loginWindow) {
+      if (loginWindow.isMinimized()) loginWindow.restore();
+      loginWindow.focus();
+    } else if (tray) {
+      // Có thể show thông báo hoặc tạo lại cửa sổ nếu cần
+    }
+  });
+
+  app.on('ready', () => {
+    console.log('App is starting...');
+    const uid = store.get('uid');
+    console.log('UID from store:', uid);
+    if (!uid) {
+      console.log('No UID found, showing login window.');
+      createLoginWindow();
+    } else {
+      console.log('UID found, starting background.');
+      startBackground();
+    }
+    salaAutoLauncher.enable().catch(err => {
+      console.error('AutoLaunch error:', err);
+      if (err.message && err.message.includes('Access is denied')) {
+        dialog.showErrorBox(
+          'Lỗi tự khởi động',
+          'Không thể bật tự khởi động.\nỨng dụng sẽ thử khởi động lại với quyền Administrator.'
+        );
+        runAsAdmin();
+        app.quit();
+      }
+    });
+  });
+
+  app.on('window-all-closed', e => {
+    // Không thoát app khi đóng hết cửa sổ (chạy ngầm tray)
+    e.preventDefault();
+  });
+}
+
+// Hàm này chỉ dùng nếu bạn muốn chạy lại app với quyền admin (không tự động gọi)
+function runAsAdmin() {
+  sudoer.exec('node main.js', { name: 'Sala Printer' }).then(console.log).catch(console.error);
+}
