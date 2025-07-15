@@ -25,11 +25,14 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "canvas": "^3.1.2",
     "electron-auto-launch": "^5.0.7",
     "electron-store": "^10.1.0",
     "electron-sudo": "^4.0.12",
+    "esc-pos-encoder": "^3.0.0",
     "express": "^5.1.0",
-    "firebase-admin": "^13.4.0"
+    "firebase-admin": "^13.4.0",
+    "iconv-lite": "^0.6.3"
   },
   "devDependencies": {
     "electron": "^37.2.0",

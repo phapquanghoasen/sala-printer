@@ -7,6 +7,8 @@ const net = require('net');
 const AutoLaunch = require('electron-auto-launch');
 const Sudoer = require('electron-sudo').default;
 const sudoer = new Sudoer();
+const { createCanvas } = require('canvas');
+const Encoder = require('esc-pos-encoder');
 
 const serviceAccountPath = path.join(process.resourcesPath, 'firebase-service-account.json');
 const serviceAccount = require(serviceAccountPath);
@@ -87,91 +89,114 @@ function getBillTotal(foods) {
   return (foods || []).reduce((sum, food) => sum + food.price * food.quantity, 0);
 }
 
-function formatFoodLine(name, qty, price) {
-  const nameWidth = 24;
-  const qtyWidth = 6;
-  const priceWidth = 18;
+async function renderBillToImage(data) {
+  const lineHeight = 32;
+  const startY = 20;
+  const contentWidth = 576; // Khổ giấy 80mm
 
-  let foodName = name.length > nameWidth ? name.slice(0, nameWidth - 1) + '…' : name;
-  foodName = foodName.padEnd(nameWidth, ' ');
+  // Tự động tính chiều cao canvas dựa trên số lượng món ăn
+  const headerLines = 3;
+  const footerLines = 2;
+  const tableHeaderLines = 1;
+  const height = (headerLines + data.foods.length + tableHeaderLines + footerLines) * lineHeight + startY;
 
-  const qtyStr = String(qty).padStart(qtyWidth, ' ');
-  const priceStr = formatPrice(price).padStart(priceWidth, ' ');
+  const canvas = createCanvas(contentWidth, height);
+  const ctx = canvas.getContext('2d');
 
-  return `${foodName}${qtyStr}${priceStr}`;
-}
+  // Vẽ nền trắng
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, contentWidth, height);
+  ctx.fillStyle = '#000';
 
-function buildEscposBuffer(data) {
-  let lines = [];
-  lines.push('\x1B\x40'); // ESC @ (reset)
-  lines.push('\x1B\x21\x20'); // font double height
-  lines.push('SALA FOOD\n');
-  if (data.tableNumber) lines.push(`Bàn: ${data.tableNumber}\n`);
-  lines.push('------------------------------------------------\n');
-  lines.push('Tên món                 SL     Giá\n');
+  let currentY = startY;
+
+  // Vẽ Header
+  ctx.font = 'bold 28px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText('SALA Nguyễn Bá Đô', contentWidth / 2, currentY);
+  currentY += lineHeight * 1.5;
+  if (data.tableNumber) {
+    ctx.font = '24px Arial';
+    ctx.fillText(`Bàn: ${data.tableNumber}`, contentWidth / 2, currentY);
+    currentY += lineHeight * 1.5;
+  }
+
+  // Vẽ danh sách món ăn
+  ctx.font = '22px Arial';
+  ctx.textAlign = 'left';
   data.foods.forEach(food => {
-    lines.push(formatFoodLine(food.name, food.quantity, food.price) + '\n');
+    ctx.fillText(food.name, 10, currentY);
+    ctx.textAlign = 'right';
+    ctx.fillText(`${food.quantity} x ${formatPrice(food.price)}`, contentWidth - 10, currentY);
+    ctx.textAlign = 'left';
+    currentY += lineHeight;
   });
-  lines.push('------------------------------------------------\n');
-  lines.push(`Tổng: ${formatPrice(getBillTotal(data.foods))}\n`);
-  lines.push('\nNAM MÔ A DI ĐÀ PHẬT\n\n\n');
-  lines.push('\x1D\x56\x00'); // cut
-  return Buffer.from(lines.join(''), 'utf8');
+
+  // Vẽ đường kẻ ngang
+  ctx.fillRect(10, currentY, contentWidth - 20, 2);
+  currentY += lineHeight;
+
+  // Vẽ tổng tiền
+  const total = formatPrice(getBillTotal(data.foods));
+  ctx.font = 'bold 26px Arial';
+  ctx.textAlign = 'left';
+  ctx.fillText('Tổng cộng:', 10, currentY);
+  ctx.textAlign = 'right';
+  ctx.fillText(total, contentWidth - 10, currentY);
+  currentY += lineHeight * 2;
+
+  return canvas;
 }
 
 async function printReceipt(billId) {
   console.log(`[PRINT] Bắt đầu in hóa đơn: ${billId}`);
   const uid = store.get('uid');
+  if (!uid) throw new Error('Không tìm thấy UID người dùng đã đăng nhập.');
+
   const userDoc = await admin.firestore().collection('users').doc(uid).get();
-  if (!userDoc.exists) {
-    console.error('[PRINT] Không tìm thấy user!');
-    throw new Error('Không tìm thấy user!');
-  }
+  if (!userDoc.exists) throw new Error('Không tìm thấy thông tin người dùng trong CSDL.');
   const userData = userDoc.data();
 
-  let printerIp = '192.168.1.100';
-  let printerPort = 9100;
-  if (userData.printerIp) printerIp = userData.printerIp;
-  if (userData.printerPort) printerPort = userData.printerPort;
+  const printerIp = userData.printerIp || '192.168.1.194';
+  const printerPort = userData.printerPort || 9100;
 
   const billDoc = await admin.firestore().collection('bills').doc(billId).get();
-  if (!billDoc.exists) {
-    console.error('[PRINT] Không tìm thấy hóa đơn!');
-    throw new Error('Không tìm thấy hóa đơn!');
-  }
+  if (!billDoc.exists) throw new Error(`Không tìm thấy hóa đơn với ID: ${billId}`);
   const billData = billDoc.data();
 
-  const buffer = buildEscposBuffer(billData);
+  // 1. Render hóa đơn ra đối tượng canvas
+  const canvas = await renderBillToImage(billData);
 
+  // 2. Chuyển canvas thành lệnh in ESC/POScanvas
+  const encoder = new Encoder();
+
+  // Khởi tạo và thêm lệnh in ảnh
+  encoder.initialize();
+  encoder.image(canvas, 576, 576, 'threshold', 128);
+
+  // Thêm các lệnh còn lại
+  encoder.cut();
+
+  // Lấy buffer cuối cùng
+  const resultBuffer = encoder.encode();
+
+  // 3. Gửi lệnh tới máy in qua TCP (giữ nguyên)
   return new Promise((resolve, reject) => {
     const client = new net.Socket();
-    let isConnected = false;
-    client.setTimeout(5000);
-
+    client.setTimeout(10000);
     client.connect(printerPort, printerIp, () => {
-      isConnected = true;
-      console.log(`[PRINT] Đã kết nối tới máy in ${printerIp}:${printerPort}`);
-      client.write(buffer, () => {
-        console.log('[PRINT] Đã gửi dữ liệu in thành công');
+      client.write(resultBuffer, () => {
         client.end();
         resolve();
       });
     });
-
     client.on('timeout', () => {
-      if (!isConnected) {
-        const msg = `[PRINT] Không thể kết nối tới máy in tại ${printerIp}:${printerPort} (timeout)`;
-        console.error(msg);
-        client.destroy();
-        reject(new Error(msg));
-      }
-    });
-
-    client.on('error', err => {
-      const msg = `[PRINT] Lỗi khi kết nối hoặc in: ${err.message}`;
-      console.error(msg);
       client.destroy();
-      reject(new Error(msg));
+      reject(new Error(`Không thể kết nối tới máy in tại ${printerIp}:${printerPort} (hết thời gian chờ)`));
+    });
+    client.on('error', err => {
+      client.destroy();
+      reject(new Error(`Lỗi kết nối máy in: ${err.message}`));
     });
   });
 }
@@ -251,10 +276,7 @@ if (!gotTheLock) {
     salaAutoLauncher.enable().catch(err => {
       console.error('AutoLaunch error:', err);
       if (err.message && err.message.includes('Access is denied')) {
-        dialog.showErrorBox(
-          'Lỗi tự khởi động',
-          'Không thể bật tự khởi động.\nỨng dụng sẽ thử khởi động lại với quyền Administrator.'
-        );
+        dialog.showErrorBox('Lỗi tự khởi động', 'Không thể bật tự khởi động.\nỨng dụng sẽ thử khởi động lại với quyền Administrator.');
         runAsAdmin();
         app.quit();
       }

@@ -6,7 +6,7 @@
     "experimentalTernaries": true,
     "jsxBracketSameLine": false,
     "jsxSingleQuote": false,
-    "printWidth": 100,
+    "printWidth": 200,
     "semi": true,
     "singleAttributePerLine": true,
     "singleQuote": true,
