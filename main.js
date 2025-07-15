@@ -85,46 +85,64 @@ function formatPrice(value) {
     .trim();
 }
 
+ function formatDate(date) {
+  if (!date) return '';
+
+  return `${date.toLocaleDateString('vi-VN')} - ${date.toLocaleTimeString('vi-VN')}`;
+}
+
 function getBillTotal(foods) {
   return (foods || []).reduce((sum, food) => sum + food.price * food.quantity, 0);
 }
 
 async function renderBillToImage(data) {
-  const lineHeight = 32;
+  const lineHeight = 32; // Tăng chiều cao dòng để chữ không bị dính vào nhau
   const startY = 20;
-  const contentWidth = 576; // Khổ giấy 80mm
+  const contentWidth = 576;
 
-  // Tự động tính chiều cao canvas dựa trên số lượng món ăn
-  const headerLines = 3;
+  const foods = data.foods || [];
+  const headerLines = 5;
   const footerLines = 2;
   const tableHeaderLines = 1;
-  const height = (headerLines + data.foods.length + tableHeaderLines + footerLines) * lineHeight + startY;
+
+  // Tính chiều cao ban đầu, sau đó làm tròn lên bội số của 8
+  const calculatedHeight = (headerLines + foods.length + tableHeaderLines + footerLines) * lineHeight + startY;
+  const height = Math.ceil(calculatedHeight / 8) * 8;
 
   const canvas = createCanvas(contentWidth, height);
   const ctx = canvas.getContext('2d');
 
-  // Vẽ nền trắng
   ctx.fillStyle = '#fff';
   ctx.fillRect(0, 0, contentWidth, height);
   ctx.fillStyle = '#000';
 
-  let currentY = startY;
+  let currentY = 25;
 
   // Vẽ Header
-  ctx.font = 'bold 28px Arial';
+  const headerFontSize = 26;
+  ctx.font = `bold ${headerFontSize}px sans-serif`;
   ctx.textAlign = 'center';
-  ctx.fillText('SALA Nguyễn Bá Đô', contentWidth / 2, currentY);
-  currentY += lineHeight * 1.5;
+  ctx.fillText('SALA FOOD', contentWidth / 2, currentY);
+  currentY += lineHeight * 1.3;
+
+  // Lấy thời gian và gộp với thông tin bàn
+  const billCreationTime = (data.createdAt && data.createdAt.toDate) ? data.createdAt.toDate() : new Date();
+  const formattedTime = formatDate(billCreationTime);
+  
+  let tableInfo = formattedTime;
   if (data.tableNumber) {
-    ctx.font = '24px Arial';
-    ctx.fillText(`Bàn: ${data.tableNumber}`, contentWidth / 2, currentY);
-    currentY += lineHeight * 1.5;
+    tableInfo = `Bàn: ${data.tableNumber} - ${formattedTime}`;
   }
 
-  // Vẽ danh sách món ăn
-  ctx.font = '22px Arial';
+  ctx.font = '25px sans-serif';
+  ctx.fillText(tableInfo, contentWidth / 2, currentY);
+  currentY += lineHeight * 1.5;
+
+  // **SỬA LỖI TẠI ĐÂY**
+  // Vẽ danh sách món ăn - Tăng kích thước font
+  ctx.font = '25px sans-serif';
   ctx.textAlign = 'left';
-  data.foods.forEach(food => {
+  foods.forEach(food => {
     ctx.fillText(food.name, 10, currentY);
     ctx.textAlign = 'right';
     ctx.fillText(`${food.quantity} x ${formatPrice(food.price)}`, contentWidth - 10, currentY);
@@ -133,12 +151,13 @@ async function renderBillToImage(data) {
   });
 
   // Vẽ đường kẻ ngang
+  currentY += lineHeight / 2;
   ctx.fillRect(10, currentY, contentWidth - 20, 2);
   currentY += lineHeight;
 
   // Vẽ tổng tiền
   const total = formatPrice(getBillTotal(data.foods));
-  ctx.font = 'bold 26px Arial';
+  ctx.font = 'bold 30px sans-serif';
   ctx.textAlign = 'left';
   ctx.fillText('Tổng cộng:', 10, currentY);
   ctx.textAlign = 'right';
@@ -167,12 +186,14 @@ async function printReceipt(billId) {
   // 1. Render hóa đơn ra đối tượng canvas
   const canvas = await renderBillToImage(billData);
 
-  // 2. Chuyển canvas thành lệnh in ESC/POScanvas
+  // 2. Chuyển canvas thành lệnh in ESC/POS
   const encoder = new Encoder();
 
   // Khởi tạo và thêm lệnh in ảnh
   encoder.initialize();
-  encoder.image(canvas, 576, 576, 'threshold', 128);
+
+  // Sử dụng chiều rộng và chiều cao thực tế của canvas (đã được làm tròn)
+  encoder.image(canvas, canvas.width, canvas.height, 'threshold', 128);
 
   // Thêm các lệnh còn lại
   encoder.cut();
