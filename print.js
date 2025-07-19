@@ -186,6 +186,11 @@ async function printReceipt(billId) {
   // Sử dụng chiều rộng và chiều cao thực tế của canvas (đã được làm tròn)
   encoder.image(canvas, canvas.width, canvas.height, 'threshold', 128);
 
+  // Thêm một số dòng trống để đảm bảo ảnh được in hoàn toàn
+  encoder.newline();
+  encoder.newline();
+  encoder.newline();
+
   // Thêm các lệnh còn lại
   encoder.cut();
 
