@@ -39,8 +39,21 @@ function getBillTotal(foods) {
   return (foods || []).reduce((sum, food) => sum + food.price * food.quantity, 0);
 }
 
+function groupBy(data, key) {
+  const groups = {};
+
+  data.forEach(item => {
+    const name = item[key] || 'other';
+    if (!groups[name]) groups[name] = [];
+    groups[name].push(food);
+  });
+
+  return groups;
+}
+
 module.exports = {
-  formatPrice,
   formatDate,
+  formatPrice,
   getBillTotal,
+  groupBy,
 };

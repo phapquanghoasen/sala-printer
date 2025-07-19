@@ -3,7 +3,8 @@ const { app, Tray, Menu, BrowserWindow, ipcMain, dialog } = require('electron');
 const Store = require('electron-store').default;
 const AutoLaunch = require('electron-auto-launch');
 const Sudoer = require('electron-sudo').default;
-const { listenPrintQueue } = require('./print');
+// const { listenPrintClientBill } = require('./print');
+const { listenPrintKitchenBill } = require('./print-kitchen');
 
 const store = new Store();
 const sudoer = new Sudoer();
@@ -12,7 +13,8 @@ const salaAutoLauncher = new AutoLaunch({ name: 'Sala Printer' });
 
 let tray = null;
 let loginWindow = null;
-let unsubscribePrintQueue = null;
+// let unsubscribePrintClientBill = null;
+let unsubscribePrintKitchenBill = null;
 
 function destroyTray() {
   if (tray) {
@@ -37,17 +39,25 @@ function createLoginWindow() {
   });
 }
 
-function clearUnsubscribePrintQueue() {
-  if (unsubscribePrintQueue) {
-    unsubscribePrintQueue();
-    unsubscribePrintQueue = null;
+// function clearUnsubscribePrintClientBill() {
+//   if (unsubscribePrintClientBill) {
+//     unsubscribePrintClientBill();
+//     unsubscribePrintClientBill = null;
+//   }
+// }
+
+function clearUnsubscribePrintKitchenBill() {
+  if (unsubscribePrintKitchenBill) {
+    unsubscribePrintKitchenBill();
+    unsubscribePrintKitchenBill = null;
   }
 }
 
 function logout() {
   store.delete('uid');
   destroyTray();
-  clearUnsubscribePrintQueue();
+  // clearUnsubscribePrintClientBill();
+  clearUnsubscribePrintKitchenBill();
   createLoginWindow();
 }
 
@@ -62,8 +72,10 @@ function startBackground() {
   tray.setToolTip('Sala Printer');
   tray.setContextMenu(contextMenu);
 
-  clearUnsubscribePrintQueue();
-  unsubscribePrintQueue = listenPrintQueue();
+  // clearUnsubscribePrintClientBill();
+  // unsubscribePrintClientBill = listenPrintClientBill();
+  clearUnsubscribePrintKitchenBill();
+  unsubscribePrintKitchenBill = listenPrintKitchenBill();
 }
 
 function runAsAdmin() {

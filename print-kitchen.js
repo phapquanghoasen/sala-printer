@@ -42,8 +42,12 @@ function calculateBillHeight(foodsLength) {
   dryRunY += HEIGHT.HEADER;
   dryRunY += CONFIG.SPACING_AFTER;
 
-  // Vẽ thông tin
+  // Vẽ thông tin bàn và thời gian
   dryRunY += HEIGHT.INFO;
+  dryRunY += CONFIG.SPACING_AFTER;
+
+  // Vẽ thông tin trang
+  dryRunY += HEIGHT.PAGE;
   dryRunY += CONFIG.SPACING_AFTER;
 
   // Vẽ đường kẻ ngang đầu tiên
@@ -85,7 +89,7 @@ async function renderBillToImage(data) {
 
   let currentY = 0;
 
-  // Vẽ Header - SALA FOOD
+  // Vẽ tiêu đề
   ctx.font = `${CONFIG.HEADER.FONT_STYLE} ${CONFIG.HEADER.FONT_SIZE}px ${CONFIG.FONT_FAMILY}`;
   ctx.textAlign = 'center';
   ctx.fillText('SALA FOOD', CONFIG.WIDTH / 2, currentY);
@@ -98,6 +102,14 @@ async function renderBillToImage(data) {
   ctx.textAlign = 'center';
   ctx.fillText(tableInfo, CONFIG.WIDTH / 2, currentY);
   currentY += HEIGHT.INFO;
+  currentY += CONFIG.SPACING_AFTER;
+
+  // Vẽ thông tin trang
+  const pageInfo = `Tờ: ${data.page} / ${data.pageCount}`;
+  ctx.font = `${CONFIG.PAGE.FONT_SIZE}px ${CONFIG.FONT_FAMILY}`;
+  ctx.textAlign = 'center';
+  ctx.fillText(pageInfo, CONFIG.WIDTH / 2, currentY);
+  currentY += HEIGHT.PAGE;
   currentY += CONFIG.SPACING_AFTER;
 
   // Vẽ đường kẻ ngang đầu tiên
@@ -167,32 +179,41 @@ async function printReceipt(billId) {
   if (!userDoc.exists) throw new Error('Không tìm thấy thông tin người dùng trong CSDL.');
   const userData = userDoc.data();
 
-  const printerIp = userData.printerIp || '192.168.1.194';
-  const printerPort = userData.printerPort || 9100;
+  const printerIp = userData.printerKitchenIp || '192.168.1.194';
+  const printerPort = userData.printerKitchenPort || 9100;
 
   const billDoc = await admin.firestore().collection('bills').doc(billId).get();
   if (!billDoc.exists) throw new Error(`Không tìm thấy hóa đơn với ID: ${billId}`);
   const billData = billDoc.data();
 
-  // 1. Render hóa đơn ra đối tượng canvas
-  const canvas = await renderBillToImage(billData);
+  const foods = billData.foods || [];
+  const groupFoods = Object.values(groupBy(foods, 'type'));
+  const pageCount = groupFoods.length;
 
-  // 2. Chuyển canvas thành lệnh in ESC/POS
   const encoder = new Encoder();
 
-  // Khởi tạo và thêm lệnh in ảnh
   encoder.initialize();
 
-  // Sử dụng chiều rộng và chiều cao thực tế của canvas (đã được làm tròn)
-  encoder.image(canvas, canvas.width, canvas.height, 'threshold', 128);
+  groupFoods.forEach(async (foods, index) => {
+    // 1. Render hóa đơn ra đối tượng canvas
+    const canvas = await renderBillToImage({
+      ...billData,
+      foods,
+      page: index + 1,
+      pageCount: pageCount,
+    });
 
-  // Thêm một số dòng trống để đảm bảo ảnh được in hoàn toàn
-  encoder.newline();
-  encoder.newline();
-  encoder.newline();
+    // Sử dụng chiều rộng và chiều cao thực tế của canvas (đã được làm tròn)
+    encoder.image(canvas, canvas.width, canvas.height, 'threshold', 128);
 
-  // Thêm các lệnh còn lại
-  encoder.cut();
+    // Thêm một số dòng trống để đảm bảo ảnh được in hoàn toàn
+    encoder.newline();
+    encoder.newline();
+    encoder.newline();
+
+    // Thêm các lệnh còn lại
+    encoder.cut();
+  });
 
   // Lấy buffer cuối cùng
   const resultBuffer = encoder.encode();
@@ -218,7 +239,7 @@ async function printReceipt(billId) {
   });
 }
 
-function listenPrintClientBill() {
+function listenPrintKitchenBill() {
   const db = admin.firestore();
   const PRINT_STATUS = {
     pending: 'pending',
@@ -227,8 +248,9 @@ function listenPrintClientBill() {
     failed: 'failed',
   };
 
+  // .collection('printKitchenBills')
   return db
-    .collection('printClientBills')
+    .collection('printQueue')
     .where('status', '==', PRINT_STATUS.pending)
     .onSnapshot(snapshot => {
       snapshot.docChanges().forEach(async change => {
@@ -258,5 +280,5 @@ function listenPrintClientBill() {
 }
 
 module.exports = {
-  listenPrintClientBill,
+  listenPrintKitchenBill,
 };
