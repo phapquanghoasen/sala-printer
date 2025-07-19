@@ -48,8 +48,7 @@ function listenPrintBill(type, printReceipt) {
     failed: 'failed',
   };
 
-  // const collectionName = type === 'kitchen' ? 'printKitchenBills' : 'printClientBills';
-  const collectionName = type === 'kitchen' ? 'printQueue' : 'printClientBills';
+  const collectionName = type === 'kitchen' ? 'printKitchenBills' : 'printClientBills';
 
   return db
     .collection(collectionName)
