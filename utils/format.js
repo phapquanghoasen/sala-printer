@@ -50,5 +50,5 @@ function groupBy(data, key) {
 module.exports = {
   formatDate,
   formatPrice,
-  groupBy
+  groupBy,
 };
