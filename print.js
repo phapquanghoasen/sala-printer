@@ -52,7 +52,7 @@ function calculateBillHeight(foodsLength) {
 
   // Vẽ tiêu đề bảng
   dryRunY += HEIGHT.TABLE_ROW;
-  dryRunY += foodsLength * CONFIG.TABLE.SPACING_AFTER;
+  dryRunY += CONFIG.TABLE.SPACING_AFTER;
 
   // Vẽ danh sách món ăn
   dryRunY += foodsLength * HEIGHT.TABLE_ROW;
@@ -60,7 +60,7 @@ function calculateBillHeight(foodsLength) {
   dryRunY += CONFIG.SPACING_AFTER;
 
   // Vẽ đường kẻ ngang thứ hai
-  dryRunY += CONFIG.HR.HEIGHT;
+  dryRunY += HEIGHT.HR;
   dryRunY += CONFIG.SPACING_AFTER;
 
   // Vẽ tổng tiền
@@ -77,6 +77,7 @@ async function renderBillToImage(data) {
   const canvas = createCanvas(CONFIG.WIDTH, height);
   const ctx = canvas.getContext('2d');
 
+  // Xóa toàn bộ canvas với màu trắng
   ctx.fillStyle = '#fff';
   ctx.fillRect(0, 0, CONFIG.WIDTH, height);
   ctx.fillStyle = '#000';
@@ -84,29 +85,28 @@ async function renderBillToImage(data) {
 
   let currentY = 0;
 
-  // Vẽ Header
+  // Vẽ Header - SALA FOOD
   ctx.font = `${CONFIG.HEADER.FONT_STYLE} ${CONFIG.HEADER.FONT_SIZE}px ${CONFIG.FONT_FAMILY}`;
   ctx.textAlign = 'center';
   ctx.fillText('SALA FOOD', CONFIG.WIDTH / 2, currentY);
   currentY += HEIGHT.HEADER;
   currentY += CONFIG.SPACING_AFTER;
 
-  // Vẽ thông tin
+  // Vẽ thông tin bàn và thời gian
   const tableInfo = `Bàn: ${data.tableNumber} - ${formatDate(data.createdAt)}`;
   ctx.font = `${CONFIG.INFO.FONT_SIZE}px ${CONFIG.FONT_FAMILY}`;
+  ctx.textAlign = 'center';
   ctx.fillText(tableInfo, CONFIG.WIDTH / 2, currentY);
   currentY += HEIGHT.INFO;
   currentY += CONFIG.SPACING_AFTER;
 
   // Vẽ đường kẻ ngang đầu tiên
-
   ctx.fillRect(CONFIG.MARGINS.LEFT, currentY, LINE_WIDTH, CONFIG.HR.HEIGHT);
   currentY += HEIGHT.HR;
   currentY += CONFIG.SPACING_AFTER;
 
   // Vẽ tiêu đề bảng
   ctx.font = `${CONFIG.TABLE.FONT_STYLE} ${CONFIG.TABLE.FONT_SIZE}px ${CONFIG.FONT_FAMILY}`;
-
   ctx.textAlign = 'left';
   ctx.fillText('Tên', CONFIG.TABLE.COLUMNS.NAME, currentY);
   ctx.textAlign = 'center';
@@ -144,9 +144,8 @@ async function renderBillToImage(data) {
   currentY += HEIGHT.HR;
   currentY += CONFIG.SPACING_AFTER;
 
-  const total = formatPrice(getBillTotal(data.foods));
-
   // Vẽ tổng tiền
+  const total = formatPrice(getBillTotal(data.foods));
   ctx.font = `${CONFIG.TOTAL.FONT_STYLE} ${CONFIG.TOTAL.FONT_SIZE}px ${CONFIG.FONT_FAMILY}`;
   ctx.textAlign = 'left';
   ctx.fillText('Tổng cộng:', CONFIG.MARGINS.LEFT, currentY);
