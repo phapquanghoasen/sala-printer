@@ -3,7 +3,7 @@ const { app, Tray, Menu, BrowserWindow, ipcMain, dialog } = require('electron');
 const Store = require('electron-store').default;
 const AutoLaunch = require('electron-auto-launch');
 const Sudoer = require('electron-sudo').default;
-// const { listenPrintClientBill } = require('./print');
+const { listenPrintClientBill } = require('./print-client');
 const { listenPrintKitchenBill } = require('./print-kitchen');
 
 const store = new Store();
@@ -13,7 +13,7 @@ const salaAutoLauncher = new AutoLaunch({ name: 'Sala Printer' });
 
 let tray = null;
 let loginWindow = null;
-// let unsubscribePrintClientBill = null;
+let unsubscribePrintClientBill = null;
 let unsubscribePrintKitchenBill = null;
 
 function destroyTray() {
@@ -39,12 +39,12 @@ function createLoginWindow() {
   });
 }
 
-// function clearUnsubscribePrintClientBill() {
-//   if (unsubscribePrintClientBill) {
-//     unsubscribePrintClientBill();
-//     unsubscribePrintClientBill = null;
-//   }
-// }
+function clearUnsubscribePrintClientBill() {
+  if (unsubscribePrintClientBill) {
+    unsubscribePrintClientBill();
+    unsubscribePrintClientBill = null;
+  }
+}
 
 function clearUnsubscribePrintKitchenBill() {
   if (unsubscribePrintKitchenBill) {
@@ -56,7 +56,7 @@ function clearUnsubscribePrintKitchenBill() {
 function logout() {
   store.delete('uid');
   destroyTray();
-  // clearUnsubscribePrintClientBill();
+  clearUnsubscribePrintClientBill();
   clearUnsubscribePrintKitchenBill();
   createLoginWindow();
 }
@@ -72,8 +72,8 @@ function startBackground() {
   tray.setToolTip('Sala Printer');
   tray.setContextMenu(contextMenu);
 
-  // clearUnsubscribePrintClientBill();
-  // unsubscribePrintClientBill = listenPrintClientBill();
+  clearUnsubscribePrintClientBill();
+  unsubscribePrintClientBill = listenPrintClientBill();
   clearUnsubscribePrintKitchenBill();
   unsubscribePrintKitchenBill = listenPrintKitchenBill();
 }
@@ -132,7 +132,7 @@ if (!gotTheLock) {
   });
 }
 
-ipcMain.on('login-success', (event, uid) => {
+ipcMain.on('login-success', (_event, uid) => {
   store.set('uid', uid);
   if (loginWindow) loginWindow.close();
   startBackground();
