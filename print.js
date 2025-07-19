@@ -4,6 +4,7 @@ const admin = require('firebase-admin');
 const Store = require('electron-store').default;
 const Encoder = require('esc-pos-encoder');
 const { createCanvas } = require('canvas');
+const { CONFIG, HEIGHT, LINE_WIDTH } = require('./constants');
 const { getBillTotal, formatPrice, formatDate } = require('./utils');
 
 const store = new Store();
@@ -14,7 +15,6 @@ if (!admin.apps.length) {
   admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
 }
 
-// Hàm trợ giúp để cắt ngắn văn bản nếu nó vượt quá chiều rộng cho phép
 function truncateText(ctx, text, maxWidth) {
   let width = ctx.measureText(text).width;
   const ellipsis = '...';
@@ -25,7 +25,7 @@ function truncateText(ctx, text, maxWidth) {
   }
 
   let len = text.length;
-  // Lặp lại việc cắt bớt ký tự cuối cho đến khi văn bản + "..." vừa với chiều rộng
+
   while (width + ellipsisWidth > maxWidth && len > 0) {
     len--;
     text = text.substring(0, len);
@@ -35,119 +35,125 @@ function truncateText(ctx, text, maxWidth) {
   return text + ellipsis;
 }
 
+function calculateBillHeight(foodsLength) {
+  let dryRunY = 0;
+
+  // Vẽ tiêu đề
+  dryRunY += HEIGHT.HEADER;
+  dryRunY += CONFIG.SPACING_AFTER;
+
+  // Vẽ thông tin
+  dryRunY += HEIGHT.INFO;
+  dryRunY += CONFIG.SPACING_AFTER;
+
+  // Vẽ đường kẻ ngang đầu tiên
+  dryRunY += HEIGHT.HR;
+  dryRunY += CONFIG.SPACING_AFTER;
+
+  // Vẽ tiêu đề bảng
+  dryRunY += HEIGHT.TABLE_ROW;
+  dryRunY += foodsLength * CONFIG.TABLE.SPACING_AFTER;
+
+  // Vẽ danh sách món ăn
+  dryRunY += foodsLength * HEIGHT.TABLE_ROW;
+  dryRunY += foodsLength * CONFIG.TABLE.SPACING_AFTER;
+  dryRunY += CONFIG.SPACING_AFTER;
+
+  // Vẽ đường kẻ ngang thứ hai
+  dryRunY += CONFIG.HR.HEIGHT;
+  dryRunY += CONFIG.SPACING_AFTER;
+
+  // Vẽ tổng tiền
+  dryRunY += HEIGHT.TOTAL;
+  dryRunY += CONFIG.SPACING_AFTER;
+
+  return dryRunY;
+}
+
 async function renderBillToImage(data) {
-  // =================================================================
-  // 1. CẤU HÌNH BỐ CỤC (Không thay đổi)
-  // =================================================================
-  const config = {
-    width: 576,
-    fontFamily: 'sans-serif',
-    lineHeight: 32,
-    margins: { top: 20, bottom: 40, left: 5, right: 10 },
-    header: { fontSize: 30, fontStyle: 'bold', spacingAfter: 10 },
-    info: { fontSize: 25, spacingAfter: 15 },
-    table: {
-      headerFontSize: 22,
-      headerFontStyle: 'bold',
-      bodyFontSize: 25,
-      columns: { name: 5, qty: 295, price: 420, total: 566 },
-      namePadding: 15,
-      spacingAfter: 10,
-    },
-    total: { fontSize: 30, fontStyle: 'bold', spacingAfter: 15 },
-    hr: { height: 2, spacingAfter: 15 },
-  };
-
   const foods = data.foods || [];
+  const height = Math.ceil(calculateBillHeight(foods.length) / 8) * 8;
 
-  // =================================================================
-  // 2. "VẼ NHÁP" ĐỂ TÍNH CHIỀU CAO CHÍNH XÁC (Logic này đã đúng)
-  // =================================================================
-  let dryRunY = config.margins.top;
-  dryRunY += config.header.fontSize + config.header.spacingAfter;
-  dryRunY += config.info.fontSize + config.info.spacingAfter;
-  dryRunY += config.hr.height + config.hr.spacingAfter;
-  dryRunY += config.lineHeight; // Dòng tiêu đề bảng
-  dryRunY += foods.length * config.lineHeight; // Các món ăn
-  dryRunY += config.table.spacingAfter;
-  dryRunY += config.hr.height + config.hr.spacingAfter;
-  dryRunY += config.total.fontSize + config.total.spacingAfter;
-  dryRunY += config.margins.bottom;
-
-  const height = Math.ceil(dryRunY / 8) * 8;
-
-  // =================================================================
-  // 3. "VẼ THẬT" LÊN CANVAS VỚI CHIỀU CAO ĐÃ CÓ
-  // =================================================================
-  const canvas = createCanvas(config.width, height);
+  const canvas = createCanvas(CONFIG.WIDTH, height);
   const ctx = canvas.getContext('2d');
 
   ctx.fillStyle = '#fff';
-  ctx.fillRect(0, 0, config.width, height);
+  ctx.fillRect(0, 0, CONFIG.WIDTH, height);
   ctx.fillStyle = '#000';
   ctx.textBaseline = 'top';
 
-  let currentY = config.margins.top;
+  let currentY = 0;
 
   // Vẽ Header
-  ctx.font = `${config.header.fontStyle} ${config.header.fontSize}px ${config.fontFamily}`;
+  ctx.font = `${CONFIG.HEADER.FONT_STYLE} ${CONFIG.HEADER.FONT_SIZE}px ${CONFIG.FONT_FAMILY}`;
   ctx.textAlign = 'center';
-  ctx.fillText('SALA FOOD', config.width / 2, currentY);
-  currentY += config.header.fontSize + config.header.spacingAfter;
+  ctx.fillText('SALA FOOD', CONFIG.WIDTH / 2, currentY);
+  currentY += HEIGHT.HEADER;
+  currentY += CONFIG.SPACING_AFTER;
 
   // Vẽ thông tin
-  const billCreationTime = data.createdAt && data.createdAt.toDate ? data.createdAt.toDate() : new Date();
-  const tableInfo = data.tableNumber ? `Bàn: ${data.tableNumber} - ${formatDate(billCreationTime)}` : formatDate(billCreationTime);
-  ctx.font = `${config.info.fontSize}px ${config.fontFamily}`;
-  ctx.fillText(tableInfo, config.width / 2, currentY);
-  currentY += config.info.fontSize + config.info.spacingAfter;
+  const tableInfo = `Bàn: ${data.tableNumber} - ${formatDate(data.createdAt)}`;
+  ctx.font = `${CONFIG.INFO.FONT_SIZE}px ${CONFIG.FONT_FAMILY}`;
+  ctx.fillText(tableInfo, CONFIG.WIDTH / 2, currentY);
+  currentY += HEIGHT.INFO;
+  currentY += CONFIG.SPACING_AFTER;
 
   // Vẽ đường kẻ ngang đầu tiên
-  const horizontalLineWidth = config.width - config.margins.left - config.margins.right;
-  ctx.fillRect(config.margins.left, currentY, horizontalLineWidth, config.hr.height);
-  currentY += config.hr.height + config.hr.spacingAfter;
+
+  ctx.fillRect(CONFIG.MARGINS.LEFT, currentY, LINE_WIDTH, CONFIG.HR.HEIGHT);
+  currentY += HEIGHT.HR;
+  currentY += CONFIG.SPACING_AFTER;
 
   // Vẽ tiêu đề bảng
-  ctx.font = `${config.table.headerFontStyle} ${config.table.headerFontSize}px ${config.fontFamily}`;
-  const headerTextY = currentY + (config.lineHeight - config.table.headerFontSize) / 2;
+  ctx.font = `${CONFIG.TABLE.FONT_STYLE} ${CONFIG.TABLE.FONT_SIZE}px ${CONFIG.FONT_FAMILY}`;
+
   ctx.textAlign = 'left';
-  ctx.fillText('Tên', config.table.columns.name, headerTextY);
+  ctx.fillText('Tên', CONFIG.TABLE.COLUMNS.NAME, currentY);
   ctx.textAlign = 'center';
-  ctx.fillText('SL', config.table.columns.qty, headerTextY);
+  ctx.fillText('SL', CONFIG.TABLE.COLUMNS.QTY, currentY);
   ctx.textAlign = 'right';
-  ctx.fillText('Giá', config.table.columns.price, headerTextY);
-  ctx.fillText('TT', config.table.columns.total, headerTextY);
-  currentY += config.lineHeight;
+  ctx.fillText('Giá', CONFIG.TABLE.COLUMNS.PRICE, currentY);
+  ctx.fillText('TT', CONFIG.TABLE.COLUMNS.TOTAL, currentY);
+  currentY += HEIGHT.TABLE_ROW;
+  currentY += CONFIG.TABLE.SPACING_AFTER;
 
   // Vẽ danh sách món ăn
-  ctx.font = `${config.table.bodyFontSize}px ${config.fontFamily}`;
-  const maxNameWidth = config.table.columns.qty - config.table.columns.name - config.table.namePadding;
+  ctx.font = `${CONFIG.TABLE.FONT_SIZE}px ${CONFIG.FONT_FAMILY}`;
+  const nameWidth = CONFIG.TABLE.COLUMNS.QTY - CONFIG.TABLE.COLUMNS.NAME - CONFIG.TABLE.NAME_PADDING;
+
   foods.forEach(food => {
-    const bodyTextY = currentY + (config.lineHeight - config.table.bodyFontSize) / 2;
-    const lineTotal = food.quantity * food.price;
-    const displayName = truncateText(ctx, food.name, maxNameWidth);
+    const displayName = truncateText(ctx, food.name, nameWidth);
+    const quantity = food.quantity.toString();
+    const price = formatPrice(food.price, false);
+    const lineTotal = formatPrice(food.quantity * food.price, false);
+
     ctx.textAlign = 'left';
-    ctx.fillText(displayName, config.table.columns.name, bodyTextY);
+    ctx.fillText(displayName, CONFIG.TABLE.COLUMNS.NAME, currentY);
     ctx.textAlign = 'center';
-    ctx.fillText(food.quantity.toString(), config.table.columns.qty, bodyTextY);
+    ctx.fillText(quantity, CONFIG.TABLE.COLUMNS.QTY, currentY);
     ctx.textAlign = 'right';
-    ctx.fillText(formatPrice(food.price, false), config.table.columns.price, bodyTextY);
-    ctx.fillText(formatPrice(lineTotal, false), config.table.columns.total, bodyTextY);
-    currentY += config.lineHeight;
+    ctx.fillText(price, CONFIG.TABLE.COLUMNS.PRICE, currentY);
+    ctx.fillText(lineTotal, CONFIG.TABLE.COLUMNS.TOTAL, currentY);
+    currentY += HEIGHT.TABLE_ROW;
+    currentY += CONFIG.TABLE.SPACING_AFTER;
   });
-  currentY += config.table.spacingAfter;
+  currentY += CONFIG.SPACING_AFTER;
 
   // Vẽ đường kẻ ngang thứ hai
-  ctx.fillRect(config.margins.left, currentY, horizontalLineWidth, config.hr.height);
-  currentY += config.hr.height + config.hr.spacingAfter;
+  ctx.fillRect(CONFIG.MARGINS.LEFT, currentY, LINE_WIDTH, CONFIG.HR.HEIGHT);
+  currentY += HEIGHT.HR;
+  currentY += CONFIG.SPACING_AFTER;
+
+  const total = formatPrice(getBillTotal(data.foods));
 
   // Vẽ tổng tiền
-  ctx.font = `${config.total.fontStyle} ${config.total.fontSize}px ${config.fontFamily}`;
+  ctx.font = `${CONFIG.TOTAL.FONT_STYLE} ${CONFIG.TOTAL.FONT_SIZE}px ${CONFIG.FONT_FAMILY}`;
   ctx.textAlign = 'left';
-  ctx.fillText('Tổng cộng:', config.margins.left, currentY);
+  ctx.fillText('Tổng cộng:', CONFIG.MARGINS.LEFT, currentY);
   ctx.textAlign = 'right';
-  ctx.fillText(formatPrice(getBillTotal(data.foods)), config.table.columns.total, currentY);
-  currentY += config.total.fontSize + config.total.spacingAfter;
+  ctx.fillText(total, CONFIG.TABLE.COLUMNS.TOTAL, currentY);
+  currentY += HEIGHT.TOTAL;
+  currentY += CONFIG.SPACING_AFTER;
 
   return canvas;
 }
