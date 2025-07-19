@@ -19,8 +19,10 @@ function formatPrice(value, hasCurrency = true) {
   });
 }
 
-function formatDate(date) {
-  if (!date) return '';
+function formatDate(value) {
+  if (!value || !value.toDate) return '';
+
+  const date = value.toDate();
 
   return `${date.toLocaleDateString('vi-VN')} - ${date.toLocaleTimeString('vi-VN')}`;
 }
