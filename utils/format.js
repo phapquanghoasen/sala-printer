@@ -35,17 +35,13 @@ function formatDate(value) {
   return `${day}/${month}/${year} - ${hours}:${minutes}:${seconds}`;
 }
 
-function getBillTotal(foods) {
-  return (foods || []).reduce((sum, food) => sum + food.price * food.quantity, 0);
-}
-
 function groupBy(data, key) {
   const groups = {};
 
   data.forEach(item => {
     const name = item[key] || 'other';
     if (!groups[name]) groups[name] = [];
-    groups[name].push(food);
+    groups[name].push(item);
   });
 
   return groups;
@@ -54,6 +50,5 @@ function groupBy(data, key) {
 module.exports = {
   formatDate,
   formatPrice,
-  getBillTotal,
-  groupBy,
+  groupBy
 };
