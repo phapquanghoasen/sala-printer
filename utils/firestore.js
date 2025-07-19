@@ -2,7 +2,6 @@ const path = require('path');
 const admin = require('firebase-admin');
 const Store = require('electron-store').default;
 
-const db = admin.firestore();
 const store = new Store();
 const serviceAccountPath = path.join(process.resourcesPath, 'firebase-service-account.json');
 const serviceAccount = require(serviceAccountPath);
@@ -10,6 +9,8 @@ const serviceAccount = require(serviceAccountPath);
 if (!admin.apps.length) {
   admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
 }
+
+const db = admin.firestore();
 
 async function getUserData() {
   const uid = store.get('uid');

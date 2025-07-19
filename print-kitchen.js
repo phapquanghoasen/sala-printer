@@ -1,7 +1,7 @@
 const Encoder = require('esc-pos-encoder');
 const { groupBy } = require('./utils/format');
 const { listenPrintBill, getPrinterInfo, getUserData, getBillData } = require('./utils/firestore');
-const { renderBillToImage, sendBufferToPrinter } = require('./utils/bill');
+const { renderKitchenBillToImage, sendBufferToPrinter } = require('./utils/bill');
 
 async function printReceipt(billId) {
   const userData = await getUserData();
@@ -26,7 +26,7 @@ async function printReceipt(billId) {
     };
 
     // 1. Render hóa đơn ra đối tượng canvas
-    const canvas = await renderBillToImage(data, true);
+    const canvas = await renderKitchenBillToImage(data);
 
     // 2. Thêm ảnh vào encoder
     encoder.image(canvas, canvas.width, canvas.height, 'threshold', 128);

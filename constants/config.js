@@ -4,7 +4,7 @@ const CONFIG = {
   LINE_HEIGHT: 1.5,
   SPACING_AFTER: 10,
   MARGINS: {
-    LEFT: 5,
+    LEFT: 0,
     RIGHT: 5,
   },
   HEADER: {
@@ -21,10 +21,14 @@ const CONFIG = {
     FONT_SIZE: 25,
     FONT_STYLE: 'bold',
     COLUMNS: {
-      NAME: 5,
-      QTY: 295,
-      PRICE: 420,
+      NAME: 0,
+      QTY: 300,
+      PRICE: 430,
       TOTAL: 566,
+    },
+    KITCHEN_COLUMNS: {
+      NAME: 0,
+      QTY: 566,
     },
     NAME_PADDING: 15,
     SPACING_AFTER: 5,

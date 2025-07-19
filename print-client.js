@@ -1,6 +1,6 @@
 const Encoder = require('esc-pos-encoder');
 const { getUserData, getBillData, listenPrintBill, getPrinterInfo } = require('./utils/firestore');
-const { renderBillToImage, sendBufferToPrinter } = require('./utils/bill');
+const { renderClientBillToImage, sendBufferToPrinter } = require('./utils/bill');
 
 async function printReceipt(billId) {
   const userData = await getUserData();
@@ -8,7 +8,7 @@ async function printReceipt(billId) {
   const { ip, port } = getPrinterInfo('client', userData);
 
   // 1. Render hóa đơn ra đối tượng canvas (dùng hàm utils)
-  const canvas = await renderBillToImage(billData);
+  const canvas = await renderClientBillToImage(billData);
 
   // 2. Chuyển canvas thành lệnh in ESC/POS
   const encoder = new Encoder();
